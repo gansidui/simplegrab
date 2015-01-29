@@ -1,79 +1,84 @@
 package simplegrab
 
 import (
-	"encoding/base32"
+	"crypto/md5"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
+// 计算string的md5值，以32位字符串形式返回
+func StringToMd5(s string) string {
+	h := md5.New()
+	io.WriteString(h, s)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // 将数据(url)下载到本地(filepath)
 // 注意：需要保证url链接的网页(或文件)无需设置相关cookie和header也可下载
-func download(url, filepath string) error {
-	resp, err := http.Get(url)
+func download(urlStr, filepath string) (*http.Response, error) {
+	resp, err := http.Get(urlStr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	file, err := os.Create(filepath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer file.Close()
 
 	io.Copy(file, resp.Body)
-	return nil
+	return resp, nil
 }
 
 // 根据url和后缀(ext)得到在本地存储的filename
-func GetFilenameFromUrl(url, ext string) string {
+func GetFilenameFromUrl(urlStr, ext string) string {
 	ext = "." + strings.TrimLeft(ext, ".")
-	return base32.StdEncoding.EncodeToString([]byte(url)) + ext
+	return StringToMd5(urlStr) + ext
 }
 
-// 根据filename得到相应的url
-func GetUrlFromFilename(filename string) string {
-	// 去掉文件后缀
-	filename = filename[:len(filename)-len(path.Ext(filename))]
-	data, _ := base32.StdEncoding.DecodeString(filename)
-	return string(data)
-}
-
-// 下载url，保存到本地目录dir下，文件名为GetFilenameFromUrl(url, ext)，返回filepath
+// 下载url，保存到本地目录dir下，文件名为GetFilenameFromUrl(urlStr, ext)
 // 注意：需要保证url链接的网页(或文件)无需设置相关cookie和header也可下载
-func Download(url, dir, ext string) (string, error) {
+func Download(urlStr, dir, ext string) (*http.Response, string, error) {
 	dir = strings.TrimRight(dir, "/") + "/"
-	filepath := dir + GetFilenameFromUrl(url, ext)
-	// 若本地已经存在就不再下载
-	if _, err := os.Stat(filepath); err != nil {
-		if err = download(url, filepath); err != nil {
-			return "", err
-		}
+	filepath := dir + GetFilenameFromUrl(urlStr, ext)
+
+	// 若本地已经存在就不再下载，此时http.Response为nil
+	if _, err := os.Stat(filepath); err == nil {
+		return nil, filepath, nil
 	}
-	return filepath, nil
+
+	resp, err := download(urlStr, filepath)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return resp, filepath, nil
 }
 
 // 下载网页(url)，并返回它的Document结构
-func GetDocument(url, dir, ext string) (*goquery.Document, error) {
-	filepath, err := Download(url, dir, ext)
+func GetDocument(url, dir, ext string) (*goquery.Document, *http.Response, string, error) {
+	resp, filepath, err := Download(url, dir, ext)
 	if err != nil {
-		return nil, err
+		return nil, nil, "", err
 	}
 
 	file, err := os.Open(filepath)
 	if err != nil {
-		return nil, err
+		return nil, resp, filepath, err
 	}
 	defer file.Close()
 
 	doc, err := goquery.NewDocumentFromReader(file)
 	if err != nil {
-		return nil, err
+		return nil, resp, filepath, err
 	}
-	return doc, nil
+
+	return doc, resp, filepath, nil
 }
