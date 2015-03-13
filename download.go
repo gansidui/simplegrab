@@ -82,3 +82,25 @@ func GetDocument(url, dir, ext string) (*goquery.Document, *http.Response, strin
 
 	return doc, resp, filepath, nil
 }
+
+// 拷贝文件，返回写入的字节数或错误
+func CopyFile(dstName, srcName string) (written int64, err error) {
+	file, err := os.Stat(dstName)
+	if err == nil && file.IsDir() {
+		dstName = strings.TrimRight(dstName, "/") + "/" + srcName
+	}
+
+	src, err := os.Open(srcName)
+	if err != nil {
+		return 0, err
+	}
+	defer src.Close()
+
+	dst, err := os.OpenFile(dstName, os.O_WRONLY|os.O_CREATE, os.ModePerm)
+	if err != nil {
+		return 0, err
+	}
+	defer dst.Close()
+
+	return io.Copy(dst, src)
+}
