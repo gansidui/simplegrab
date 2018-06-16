@@ -45,13 +45,15 @@ func GetFilenameFromUrl(urlStr, ext string) string {
 
 // 下载url，保存到本地目录dir下，文件名为GetFilenameFromUrl(urlStr, ext)
 // 注意：需要保证url链接的网页(或文件)无需设置相关cookie和header也可下载
-func Download(urlStr, dir, ext string) (*http.Response, string, error) {
+func Download(urlStr, dir, ext string, refresh bool) (*http.Response, string, error) {
 	dir = strings.TrimRight(dir, "/") + "/"
 	filepath := dir + GetFilenameFromUrl(urlStr, ext)
 
 	// 若本地已经存在就不再下载，此时http.Response为nil
-	if _, err := os.Stat(filepath); err == nil {
-		return nil, filepath, nil
+	if !refresh {
+		if _, err := os.Stat(filepath); err == nil {
+			return nil, filepath, nil
+		}
 	}
 
 	resp, err := download(urlStr, filepath)
@@ -63,8 +65,31 @@ func Download(urlStr, dir, ext string) (*http.Response, string, error) {
 }
 
 // 下载网页(url)，并返回它的Document结构
+// 如果网页已经存在，则不重新下载
 func GetDocument(url, dir, ext string) (*goquery.Document, *http.Response, string, error) {
-	resp, filepath, err := Download(url, dir, ext)
+	resp, filepath, err := Download(url, dir, ext, false)
+	if err != nil {
+		return nil, nil, "", err
+	}
+
+	file, err := os.Open(filepath)
+	if err != nil {
+		return nil, resp, filepath, err
+	}
+	defer file.Close()
+
+	doc, err := goquery.NewDocumentFromReader(file)
+	if err != nil {
+		return nil, resp, filepath, err
+	}
+
+	return doc, resp, filepath, nil
+}
+
+// 下载网页(url)，并返回它的Document结构
+// 如果网页已经存在，仍然重新下载
+func GetDocumentNeedRefresh(url, dir, ext string) (*goquery.Document, *http.Response, string, error) {
+	resp, filepath, err := Download(url, dir, ext, true)
 	if err != nil {
 		return nil, nil, "", err
 	}
