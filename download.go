@@ -3,6 +3,7 @@ package simplegrab
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -26,6 +27,10 @@ func download(urlStr, filepath string) (*http.Response, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New("StatusCode not 200")
+	}
 
 	file, err := os.Create(filepath)
 	if err != nil {
